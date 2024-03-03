@@ -1,0 +1,39 @@
+import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
+import { OpenAIEmbeddings } from 'langchain/embeddings/openai';
+import { PineconeStore } from 'langchain/vectorstores/pinecone';
+import { pinecone } from '@/utils/pinecone-client';
+import { PDFLoader } from 'langchain/document_loaders/fs/pdf';
+import { PINECONE_INDEX_NAME, PINECONE_NAME_SPACE } from '@/config/pinecone';
+import { DirectoryLoader } from 'langchain/document_loaders/fs/directory';
+import { NextApiRequest, NextApiResponse } from 'next';
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+    try {
+        const filePath = 'public/docs';
+        /*load raw docs from the all files in the directory */
+        const directoryLoader = new DirectoryLoader(filePath, {
+          '.pdf': (path) => new PDFLoader(path),
+        });
+    
+        // const loader = new PDFLoader(filePath);
+        const rawDocs = await directoryLoader.load();
+        console.log(rawDocs)
+    
+        console.log('creating vector store...');
+        /*create and store the embeddings in the vectorStore*/
+        const embeddings = new OpenAIEmbeddings();
+        const index = pinecone.Index(PINECONE_INDEX_NAME); //change to your own index name
+    
+        //embed the PDF documents
+        await PineconeStore.fromDocuments(rawDocs, embeddings, {
+          pineconeIndex: index,
+          namespace: PINECONE_NAME_SPACE,
+          textKey: 'text',
+        });
+        console.log('ingested data sucessfully');
+      return res.status(200).json({ message: 'Inserted data successfully' });
+    } catch (error) {
+      console.log('error', error);
+      return res.status(500).json({ error: 'Failed to ingest your data' });
+    }
+}
